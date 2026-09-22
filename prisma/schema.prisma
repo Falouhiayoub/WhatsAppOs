@@ -1,0 +1,374 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String               @id @default(uuid())
+  email          String               @unique
+  passwordHash   String
+  name           String
+  role           String               @default("AGENT") // OWNER, ADMIN, AGENT, VIEWER
+  organizationId String?
+  organization   Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships    OrganizationMember[]
+  assignedLeads  Lead[]               @relation("AssignedAgent")
+  assignedConversations Conversation[] @relation("AssignedConversation")
+  assignedContacts Contact[]          @relation("AssignedContact")
+  auditLogs      AuditLog[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+}
+
+model Organization {
+  id                  String               @id @default(uuid())
+  name                String
+  slug                String               @unique
+  logoUrl             String?
+  industry            String?              @default("general")
+  
+  // AI Business Profile Configuration
+  businessDescription String?
+  products            String?
+  services            String?
+  faq                 String?
+  tone                String?              @default("PROFESSIONAL")
+  defaultLanguage     String?              @default("fr")
+  businessHours       String?
+  policies            String?
+  forbiddenClaims     String?
+  handoffRules        String?
+  
+  users               User[]
+  members             OrganizationMember[]
+  whatsappAccounts    WhatsAppAccount[]
+  contacts            Contact[]
+  conversations       Conversation[]
+  messages            Message[]
+  leads               Lead[]
+  pipelines           Pipeline[]
+  templates           MessageTemplate[]
+  tags                Tag[]
+  aiAgents            AIAgent[]
+  aiSkills            AISkill[]
+  aiExecutions        AIExecution[]
+  webhookEvents       WebhookEvent[]
+  auditLogs           AuditLog[]
+  subscription        Subscription?
+
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           String       @default("AGENT")
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([userId, organizationId])
+}
+
+model WhatsAppAccount {
+  id                   String        @id @default(uuid())
+  organizationId       String
+  organization         Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  phoneNumber          String
+  phoneNumberId        String        @unique
+  businessAccountId    String?
+  accessToken          String
+  status               String        @default("CONNECTED")
+  webhookVerifyToken   String?
+  conversations        Conversation[]
+
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+}
+
+model Contact {
+  id               String         @id @default(uuid())
+  organizationId   String
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name             String
+  phone            String
+  email            String?
+  company          String?
+  source           String?        @default("WHATSAPP")
+  leadStatus       String         @default("NEW") // NEW, CONTACTED, QUALIFIED, PROPOSAL, NEGOTIATION, WON, LOST
+  assignedUserId   String?
+  assignedUser     User?          @relation("AssignedContact", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  notes            String?
+  tags             String?        @default("[]")
+  customFields     String?        @default("{}")
+  lastInteractionAt DateTime?     @default(now())
+  
+  conversations    Conversation[]
+  leads            Lead[]
+  contactTags      ContactTag[]
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([organizationId, phone])
+}
+
+model Conversation {
+  id                String             @id @default(uuid())
+  organizationId    String
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId         String
+  contact           Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  whatsappAccountId String?
+  whatsappAccount   WhatsAppAccount?   @relation(fields: [whatsappAccountId], references: [id], onDelete: SetNull)
+  assignedUserId    String?
+  assignedUser      User?              @relation("AssignedConversation", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  status            String             @default("OPEN") // OPEN, CLOSED, PENDING, NEEDS_HUMAN
+  leadStatus        String             @default("NEW")
+  unreadCount       Int                @default(0)
+  lastMessageText   String?
+  lastMessageAt     DateTime           @default(now())
+  summary           String?
+  
+  messages          Message[]
+  leads             Lead[]
+  conversationTags  ConversationTag[]
+  aiExecutions      AIExecution[]
+
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model Message {
+  id                 String           @id @default(uuid())
+  externalProviderId String?          @unique
+  organizationId     String
+  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversationId     String
+  conversation       Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender             String           // CUSTOMER, AGENT, AI_BOT
+  recipient          String
+  direction          String           // INBOUND, OUTBOUND
+  type               String           @default("TEXT")
+  content            String
+  status             String           @default("SENT") // PENDING, SENT, DELIVERED, READ, FAILED
+  metadata           String?          @default("{}")
+  timestamp          DateTime         @default(now())
+
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}
+
+model Pipeline {
+  id             String          @id @default(uuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String          @default("Default Sales Pipeline")
+  isDefault      Boolean         @default(true)
+  stages         PipelineStage[]
+  leads          Lead[]
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model PipelineStage {
+  id          String   @id @default(uuid())
+  pipelineId  String
+  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name        String
+  stageKey    String   @default("NEW")
+  order       Int
+  color       String   @default("#3B82F6")
+  leads       Lead[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Lead {
+  id             String         @id @default(uuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactId      String
+  contact        Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversationId String?
+  conversation   Conversation?  @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  pipelineId     String
+  pipeline       Pipeline       @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stageId        String
+  stage          PipelineStage  @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  
+  title          String
+  value          Float          @default(0.0)
+  currency       String         @default("MAD")
+  assignedUserId String?
+  assignedUser   User?          @relation("AssignedAgent", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  notes          String?
+  
+  buyingIntent   String?        @default("MEDIUM")
+  budget         String?
+  timeline       String?
+  location       String?
+  productInterest String?
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model MessageTemplate {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  category       String       @default("General")
+  language       String       @default("fr")
+  content        String
+  variables      String       @default("[]")
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Tag {
+  id               String            @id @default(uuid())
+  organizationId   String
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name             String
+  color            String            @default("#6B7280")
+  contactTags      ContactTag[]
+  conversationTags ConversationTag[]
+
+  createdAt        DateTime          @default(now())
+
+  @@unique([organizationId, name])
+}
+
+model ContactTag {
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tagId     String
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+}
+
+model ConversationTag {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tagId          String
+  tag            Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, tagId])
+}
+
+model AIAgent {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String       @default("Business AI Sales Assistant")
+  description    String?
+  isEnabled      Boolean      @default(true)
+  model          String       @default("gpt-4o-mini")
+  temperature    Float        @default(0.7)
+  systemPrompt   String?
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model AISkill {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  key            String
+  description    String?
+  isEnabled      Boolean      @default(true)
+  config         String       @default("{}")
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, key])
+}
+
+model AITool {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String
+  schema      String
+}
+
+model AIExecution {
+  id             String        @id @default(uuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  agentId        String?
+  skillKey       String
+  inputMetadata  String        @default("{}")
+  output         String        @default("{}")
+  tokenUsage     String        @default("{}")
+  latencyMs      Int           @default(0)
+  status         String        @default("SUCCESS")
+  error          String?
+
+  createdAt      DateTime      @default(now())
+}
+
+model WebhookEvent {
+  id             String        @id @default(uuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider       String        @default("WHATSAPP")
+  eventType      String
+  payload        String
+  isProcessed    Boolean       @default(false)
+  processedAt    DateTime?
+  retryCount     Int           @default(0)
+  error          String?
+
+  createdAt      DateTime      @default(now())
+}
+
+model AuditLog {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action         String
+  entity         String
+  entityId       String?
+  details        String?      @default("{}")
+  ipAddress      String?
+
+  createdAt      DateTime     @default(now())
+}
+
+model Subscription {
+  id               String           @id @default(uuid())
+  organizationId   String           @unique
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan             String           @default("STARTER") // FREE, STARTER, PRO, BUSINESS
+  status           String           @default("ACTIVE")
+  currentPeriodStart DateTime       @default(now())
+  currentPeriodEnd   DateTime       @default(now())
+  messageLimit     Int              @default(1000)
+  aiLimit          Int              @default(500)
+  userLimit        Int              @default(5)
+
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+}

@@ -66,7 +66,7 @@ export default function DashboardPage() {
             className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center space-x-2"
           >
             <MessageSquare className="w-4 h-4" />
-            <span>Ouvrir l'Inbox (1 Non lu)</span>
+            <span>Ouvrir l'Inbox ({metrics?.unreadConversations ?? 0} Non lu{metrics?.unreadConversations > 1 ? 's' : ''})</span>
           </Link>
         </div>
       </div>

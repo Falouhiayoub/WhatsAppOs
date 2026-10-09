@@ -23,6 +23,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const [userName, setUserName] = useState('');
   const [orgName, setOrgName] = useState('');
+  const [unreadBadge, setUnreadBadge] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -39,8 +40,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         console.error(err);
       }
     };
+
+    const fetchUnreadCount = async () => {
+      const token = localStorage.getItem('auth_token');
+      if (!token) return;
+      try {
+        const res = await fetch('/api/conversations', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.conversations && Array.isArray(data.conversations)) {
+          const totalUnread = data.conversations.reduce((acc: number, c: any) => acc + (c.unreadCount || 0), 0);
+          setUnreadBadge(totalUnread > 0 ? String(totalUnread) : null);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
     fetchUser();
-  }, []);
+    fetchUnreadCount();
+  }, [pathname]);
 
   const getInitials = (name: string) => {
     if (!name) return 'WA';
@@ -51,7 +71,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/dashboard/inbox', label: 'Inbox WhatsApp', icon: MessageSquare, badge: '3' },
+    { href: '/dashboard/inbox', label: 'Inbox WhatsApp', icon: MessageSquare, badge: unreadBadge ?? undefined },
     { href: '/dashboard/contacts', label: 'Contacts CRM', icon: Users },
     { href: '/dashboard/leads', label: 'Pipeline Leads', icon: KanbanSquare },
     { href: '/dashboard/templates', label: 'Réponses Enregistrées', icon: FileText },
